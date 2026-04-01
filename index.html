@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Weak Map</title>
+    <script type="module" src="/src/main.js"></script>
+  </head>
+  <body>
+    <div class="app">
+      <main class="map-shell">
+        <div id="map-root" class="map-root"></div>
+        <aside class="sidebar">
+          <h1>Buildings</h1>
+          <div id="status" class="status">Loading map...</div>
+          <section id="building-panel" class="panel">
+            <p class="panel-label">Selected Building</p>
+            <p id="idle-delinquents">Idle Delinquents: 0</p>
+            <p id="cash">Cash: 0</p>
+            <p id="influence">Influence: 0</p>
+            <p id="building-id">None</p>
+            <p id="building-owner">Owner: -</p>
+            <p id="building-control">Control: -</p>
+            <p id="building-assigned-delinquents" hidden>Assigned Delinquents: -</p>
+            <div id="delinquent-controls" hidden>
+              <button id="assign-delinquent" type="button">+</button>
+              <button id="remove-delinquent" type="button">-</button>
+            </div>
+            <button id="run-building" type="button" hidden>Run Building</button>
+            <button id="debug-toggle" class="debug-toggle" type="button">Debug</button>
+            <section id="debug-panel" class="debug-panel" hidden>
+              <p class="panel-label">Debug</p>
+              <div class="debug-row">
+                <span>Cash</span>
+                <button id="debug-cash-decrease" type="button">-</button>
+                <button id="debug-cash-increase" type="button">+</button>
+              </div>
+              <div class="debug-row">
+                <span>Influence</span>
+                <button id="debug-influence-decrease" type="button">-</button>
+                <button id="debug-influence-increase" type="button">+</button>
+              </div>
+              <div class="debug-row">
+                <span>Idle Delinquents</span>
+                <button id="debug-idle-decrease" type="button">-</button>
+                <button id="debug-idle-increase" type="button">+</button>
+              </div>
+            </section>
+          </section>
+        </aside>
+      </main>
+    </div>
+  </body>
+</html>
