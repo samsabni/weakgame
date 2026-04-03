@@ -3,11 +3,19 @@ import {
   adjustCash,
   adjustInfluence,
   adjustPlayerIdleDelinquents,
+  checkStarterBuildingLoss,
+  claimStarterBuilding,
+  cloneBuildings,
   clearSelection,
   createInitialState,
   getCashCap,
   getBuildingControlCap,
+  getPassiveCashRate,
+  getPassiveInfluenceRate,
+  getReachableBuildingIds,
   getSelectedBuilding,
+  getStarterBuilding,
+  resetGameState,
   selectBuilding,
   setHoveredBuilding,
   tickBuildingControl,
@@ -22,6 +30,7 @@ function createBuilding(id, control = 0, assigned = 0, options = {}) {
     owner: 'neutral',
     playerAssignedDelinquents: assigned,
     isRunning: options.isRunning ?? false,
+    neighborIds: options.neighborIds ?? [],
     bounds: { minX: 0, minY: 0, maxX: 1, maxY: 1 },
     pixels: [[0, 0]]
   };
@@ -36,7 +45,102 @@ describe('buildingState', () => {
     expect(state.playerIdleDelinquents).toBe(10);
     expect(state.cash).toBe(0);
     expect(state.influence).toBe(0);
+    expect(state.needsStarterBuilding).toBe(true);
+    expect(state.playerStarterBuildingId).toBe(null);
+    expect(state.gameOver).toBe(false);
     expect(state.buildings).toHaveLength(1);
+  });
+
+  it('claims one starter building without spending idle delinquents', () => {
+    const state = createInitialState([
+      createBuilding('building-1'),
+      createBuilding('building-2')
+    ]);
+
+    const changed = claimStarterBuilding(state, 'building-2');
+
+    expect(changed).toBe(true);
+    expect(state.needsStarterBuilding).toBe(false);
+    expect(state.selectedBuildingId).toBe('building-2');
+    expect(state.playerStarterBuildingId).toBe('building-2');
+    expect(state.playerIdleDelinquents).toBe(10);
+    expect(state.buildings[1].isRunning).toBe(true);
+    expect(state.buildings[1].playerAssignedDelinquents).toBe(10);
+    expect(state.buildings[1].control).toBe(100);
+  });
+
+  it('looks up the stored starter building from state', () => {
+    const state = createInitialState([
+      createBuilding('building-1'),
+      createBuilding('building-2')
+    ]);
+
+    claimStarterBuilding(state, 'building-2');
+
+    expect(getStarterBuilding(state)?.id).toBe('building-2');
+  });
+
+  it('does not allow a second starter claim after the first one', () => {
+    const state = createInitialState([
+      createBuilding('building-1'),
+      createBuilding('building-2')
+    ]);
+
+    claimStarterBuilding(state, 'building-1');
+
+    expect(claimStarterBuilding(state, 'building-2')).toBe(false);
+    expect(state.buildings[1].isRunning).toBe(false);
+  });
+
+  it('enters game over when the starter building drops below 100 control', () => {
+    const state = createInitialState([
+      createBuilding('building-1', 99.5, 9)
+    ]);
+    state.playerStarterBuildingId = 'building-1';
+
+    expect(checkStarterBuildingLoss(state)).toBe(true);
+    expect(state.gameOver).toBe(true);
+  });
+
+  it('does not retrigger game over once the run is already lost', () => {
+    const state = createInitialState([
+      createBuilding('building-1', 95, 9)
+    ]);
+    state.playerStarterBuildingId = 'building-1';
+    state.gameOver = true;
+
+    expect(checkStarterBuildingLoss(state)).toBe(false);
+  });
+
+  it('resets the run from the initial building snapshot', () => {
+    const initialBuildings = cloneBuildings([
+      createBuilding('building-1'),
+      createBuilding('building-2')
+    ]);
+    const state = createInitialState(cloneBuildings(initialBuildings));
+
+    claimStarterBuilding(state, 'building-1');
+    state.cash = 500;
+    state.influence = 12;
+    state.gameOver = true;
+    state.hoveredBuildingId = 'building-2';
+    state.buildings[0].control = 87;
+    state.buildings[0].playerAssignedDelinquents = 4;
+    state.buildings[0].isRunning = false;
+
+    resetGameState(state, initialBuildings);
+
+    expect(state.needsStarterBuilding).toBe(true);
+    expect(state.playerStarterBuildingId).toBe(null);
+    expect(state.gameOver).toBe(false);
+    expect(state.selectedBuildingId).toBe(null);
+    expect(state.hoveredBuildingId).toBe(null);
+    expect(state.cash).toBe(0);
+    expect(state.influence).toBe(0);
+    expect(state.playerIdleDelinquents).toBe(10);
+    expect(state.buildings[0].control).toBe(0);
+    expect(state.buildings[0].playerAssignedDelinquents).toBe(0);
+    expect(state.buildings[0].isRunning).toBe(false);
   });
 
   it('derives cash cap from running buildings', () => {
@@ -200,6 +304,31 @@ describe('buildingState', () => {
 
     expect(state.cash).toBe(0);
     expect(state.influence).toBe(1);
+  });
+
+  it('derives live passive cash and influence rates from current state', () => {
+    const state = createInitialState([
+      createBuilding('building-1', 10, 1),
+      createBuilding('building-2', 60, 6),
+      createBuilding('building-3', 100, 10, { isRunning: true })
+    ]);
+
+    expect(getPassiveCashRate(state)).toBe(3.5);
+    expect(getPassiveInfluenceRate(state)).toBe(1);
+  });
+
+  it('marks only direct neighbors reachable from controlled or running territory', () => {
+    const state = createInitialState([
+      createBuilding('building-1', 20, 1, { neighborIds: ['building-2'] }),
+      createBuilding('building-2', 0, 0, { neighborIds: ['building-1', 'building-3'] }),
+      createBuilding('building-3', 0, 0, { neighborIds: ['building-2', 'building-4'] }),
+      createBuilding('building-4', 0, 0, { neighborIds: ['building-3'] })
+    ]);
+
+    expect(getReachableBuildingIds(state)).toEqual(new Set([
+      'building-1',
+      'building-2'
+    ]));
   });
 
   it('debug resource helpers clamp to valid ranges', () => {

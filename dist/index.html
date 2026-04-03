@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Weak Map</title>
-    <script type="module" crossorigin src="/assets/index-1Dh7blo4.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DF31zJNk.css">
+    <script type="module" crossorigin src="/assets/index-CF4yyx1-.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CTE3P9cJ.css">
   </head>
   <body>
     <div class="app">
@@ -23,6 +23,7 @@
             <p id="building-owner">Owner: -</p>
             <p id="building-control">Control: -</p>
             <p id="building-assigned-delinquents" hidden>Assigned Delinquents: -</p>
+            <p id="assignment-reason" hidden></p>
             <div id="delinquent-controls" hidden>
               <button id="assign-delinquent" type="button">+</button>
               <button id="remove-delinquent" type="button">-</button>
@@ -49,6 +50,12 @@
             </section>
           </section>
         </aside>
+        <div id="game-over-overlay" class="game-over-overlay" hidden>
+          <div class="game-over-card">
+            <h2>Game Over</h2>
+            <button id="start-over" type="button">Start Over</button>
+          </div>
+        </div>
       </main>
     </div>
   </body>

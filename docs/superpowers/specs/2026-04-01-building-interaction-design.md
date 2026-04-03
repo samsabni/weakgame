@@ -113,7 +113,10 @@ The interaction state also includes:
 {
   playerIdleDelinquents: 10,
   cash: 0,
-  influence: 0
+  influence: 0,
+  needsStarterBuilding: true,
+  playerStarterBuildingId: null,
+  gameOver: false
 }
 ```
 
@@ -122,6 +125,12 @@ The interaction state also includes:
 `cash` is a global player resource used to purchase the running state for buildings and is also generated passively by controlled non-running buildings.
 
 `influence` is a global player resource generated passively by running buildings.
+
+`needsStarterBuilding` is a one-time startup flag that allows the player to choose an initial building anywhere on the map before normal rules begin.
+
+`playerStarterBuildingId` stores the id of the one starter building chosen at the beginning of the run. It remains set for the rest of that run unless the player starts over.
+
+`gameOver` tracks whether the run has been lost and the game-over overlay should be shown.
 
 ## Delinquent Manager
 
@@ -134,6 +143,8 @@ This manager is responsible for:
 - enforcing that neither idle nor assigned values can go below `0`
 
 Assignment is always scoped to the currently selected building only. A `+` or `-` action must never affect every building at once.
+
+Assignment is also gated by reachability. The player cannot assign delinquents to arbitrary buildings anywhere on the map.
 
 ### Internal Metadata
 
@@ -170,6 +181,18 @@ A building is defined as one connected cluster of roof-colored pixels. Connectiv
 ### Position Calculation
 
 `position` is calculated as the centroid of all roof pixels in a region, stored in the same coordinate space as the source image.
+
+### Neighbor Graph
+
+At startup, the system should also derive a static neighbor graph for the detected buildings.
+
+Two buildings count as neighbors if the edge-to-edge gap between their bounding boxes is less than or equal to a fixed map-pixel threshold.
+
+This threshold should be tuned so:
+- small roads and narrow gaps can still connect nearby buildings
+- large roads and visually distant gaps do not connect buildings
+
+The neighbor graph is built once for the current map and reused during delinquent-assignment checks.
 
 ### Recolor Mask
 
@@ -211,6 +234,42 @@ Hover state is visual feedback only. It does not change building data, ownership
 
 Only one building can be selected at a time.
 
+### Starter Building Phase
+
+At the start of the game, the player should be in a one-time startup phase while `needsStarterBuilding === true`.
+
+During this phase:
+- the player may choose exactly one building anywhere on the map
+- clicking that building immediately claims it as the starter building
+- store that building id in `playerStarterBuildingId`
+- the starter building immediately becomes a running building
+- the starter building immediately receives `10` assigned delinquents
+- those `10` assigned delinquents do not come out of the idle pool
+- the starter building immediately starts at `100%` control
+- the normal reachability restriction is bypassed only for this one starter choice
+- the normal `Run Building` purchase requirement is bypassed only for this one starter choice
+
+After the starter building is chosen:
+- set `needsStarterBuilding = false`
+- remove the startup-only exception
+- resume all normal reachability, running, and purchase rules
+
+If the starter building later drops below `10` delinquents, it should behave like any other running building and lose running state normally.
+
+The starter building identity itself must still remain remembered through `playerStarterBuildingId`, even if that building later stops running or loses control.
+
+### Starter Marker
+
+The starter building should always be visually identifiable on the map.
+
+The renderer should draw a small white dot at the center of the building referenced by `playerStarterBuildingId`.
+
+Rules:
+- the dot remains visible for the entire run
+- the dot stays on that same building even if it later stops running
+- the dot stays on that same building even if it later loses control
+- the dot is removed only when the player starts over and a new run begins
+
 When selected:
 - the building is highlighted visually on the overlay
 - the UI panel displays its `id`
@@ -249,6 +308,43 @@ This means multiple buildings may gain control at the same time, each according 
 
 Selection affects what the UI displays, but it does not determine which buildings gain control. Control growth is driven by assigned delinquents on each building, whether or not that building is currently selected.
 
+### Startup Messaging
+
+While `needsStarterBuilding === true`, the HUD should show a short startup instruction such as `Choose your starting building`.
+
+During this startup phase:
+- clicking empty map space does not end the phase
+- the normal `Run Building` action should be hidden or disabled because the starter-building claim replaces it temporarily
+
+Once the starter building has been claimed, the startup message should be removed and the normal selected-building flow should continue.
+
+### Starter Loss Condition
+
+The starter building is also the run-loss anchor.
+
+If the building referenced by `playerStarterBuildingId` ever drops below `100%` control:
+- set `gameOver = true`
+- show a game-over overlay
+- block normal map interactions and gameplay actions while the overlay is visible
+
+This check should be based specifically on the stored starter-building id, not on whichever building is currently selected and not on whichever building is currently running.
+
+### Start Over
+
+The game-over overlay should include a `Start Over` button.
+
+Pressing `Start Over` should reset the run on the same page without reloading:
+- rebuild fresh runtime state from the original detected building data
+- restore all buildings to non-running, non-controlled defaults
+- clear selection and hover
+- reset `cash`, `influence`, and delinquent state to their initial values
+- set `needsStarterBuilding = true`
+- set `playerStarterBuildingId = null`
+- set `gameOver = false`
+- remove the game-over overlay
+
+After reset, the player should again be able to choose a new starter building anywhere on the map.
+
 ## Delinquent Assignment Controls
 
 ### Persistent Display
@@ -275,6 +371,7 @@ When no building is selected, these buttons should be hidden.
 
 Pressing `+`:
 - only affects the currently selected building
+- only works if the selected building is reachable from current territory
 - if `playerIdleDelinquents` is greater than `0`
   - decreases `playerIdleDelinquents` by `1`
   - increases the selected building's `playerAssignedDelinquents` by `1`
@@ -292,13 +389,39 @@ The system must enforce:
 - `playerAssignedDelinquents` on any building never goes below `0`
 - control cap per building is always `min(100, playerAssignedDelinquents * 10)`
 
+### Reachability Rule
+
+A building is assignable for delinquent placement if either:
+- it already has `control > 0`
+- or it is a direct neighbor of any building with `control > 0`
+- or it is a direct neighbor of any building with `isRunning === true`
+
+Reachability should be recalculated from current building state, while the underlying neighbor graph stays static for the map.
+
+This must behave as a strict one-hop frontier:
+- direct neighbors of current territory are assignable
+- neighbors-of-neighbors are not assignable
+- expansion must proceed one building at a time with no skipping
+
+### UI Feedback For Reachability
+
+The player can still click and inspect any building on the map.
+
+If the selected building is reachable:
+- `+` behaves normally
+
+If the selected building is not reachable:
+- `+` is disabled
+- `-` still works if that building already has assigned delinquents
+- the UI should show a short reason such as `Too far from your current territory`
+
 ## Cash And Running Buildings
 
 ### Persistent Display
 
 The UI should always display:
-- `Cash: X`
-- `Influence: X`
+- `Cash: X (+Y.Y/s)`
+- `Influence: X (+Z.Z/s)`
 
 ### Run Building Button
 
@@ -376,6 +499,25 @@ If passive cash would exceed this cap, it should be clamped to the cap instead.
 
 Running buildings increase the cap but do not themselves generate cash.
 
+### Resource Rate Display
+
+The HUD should show the live current passive rates for `cash` and `influence` alongside their values.
+
+Formatting rules:
+- append the rate as `(+X.X/s)`
+- always round the displayed rate to one decimal place
+- display `0.0/s` when the current rate is zero
+
+The displayed cash rate should be the current unrounded live sum of:
+
+`5 * (control / 100)`
+
+across all eligible controlled non-running buildings.
+
+The displayed influence rate should be the current running-building count expressed as a per-second value.
+
+This display is informational only. The underlying passive application logic remains the existing 1-second tick that rounds the summed cash amount before adding it.
+
 ## Debug Menu
 
 The HUD should include a small toggle that opens and closes a hidden debug menu.
@@ -408,6 +550,27 @@ The rendered map must:
 
 The map should be the primary full-screen surface, with the information UI overlaid rather than reserving a separate page column.
 
+### Starter Marker Rendering
+
+The starter building marker should render as a small white dot centered on the stored starter building's `position`.
+
+The dot should:
+- be persistent for the duration of the run
+- remain visible independently of selection, hover, control color, or running color
+- stay aligned with the map as the map scales to viewport height
+
+It may be rendered on the existing overlay stack or on a dedicated lightweight marker layer, as long as it stays correctly aligned and does not interfere with hover/selection visuals.
+
+### HUD Styling
+
+The left HUD panel should no longer render with an opaque background, border, or blur effect.
+
+It should remain positioned in the same place, but visually behave like transparent overlay text.
+
+To preserve readability against the map and page background:
+- the text color should switch to the dark brown tone previously used by the panel background treatment
+- buttons may remain visually filled so controls still read as interactive elements
+
 ### Control-Driven Roof Color
 
 Each building's roof color should reflect that building's current `control` value.
@@ -439,6 +602,17 @@ The highlight must be visually clear without obscuring the map.
 Hover feedback should recolor the currently hovered building region to `#49473F`. This recolor applies only to the hovered building, not to all buildings sharing the same base roof color.
 
 If a building is both hovered and selected, selected-state rendering should remain visually clear. The implementation can combine the hover recolor with the selected overlay, or prioritize the selected overlay, as long as the hovered selected building still has obvious feedback.
+
+### Game Over Overlay
+
+When `gameOver === true`, a centered overlay should appear above the map and HUD.
+
+The overlay should:
+- clearly indicate game over
+- contain a `Start Over` button
+- visually block normal play interactions until reset
+
+The overlay is intentionally simple in this phase. It does not need scores, animations, or extra menus.
 
 The control-driven roof color should be rendered before hover feedback. Hover remains a temporary feedback state layered on top of the building's current control-based color.
 

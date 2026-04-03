@@ -1,6 +1,7 @@
 import { BUILDING_ROOF_COLOR, HOVER_COLOR } from './constants.js';
 
 const RECOLOR_BOUNDS_PADDING = 3;
+const ADJACENCY_GAP_THRESHOLD = 4;
 
 function isRoofPixel(data, offset) {
   return (
@@ -82,6 +83,36 @@ function buildRecolorPixels(imageData, pixels, bounds) {
   }
 
   return recolorPixels;
+}
+
+export function getBoundsGap(leftBounds, rightBounds) {
+  const horizontalGap = Math.max(
+    0,
+    Math.max(leftBounds.minX - rightBounds.maxX, rightBounds.minX - leftBounds.maxX)
+  );
+  const verticalGap = Math.max(
+    0,
+    Math.max(leftBounds.minY - rightBounds.maxY, rightBounds.minY - leftBounds.maxY)
+  );
+
+  return Math.max(horizontalGap, verticalGap);
+}
+
+export function addBuildingNeighbors(buildings, maxGap = ADJACENCY_GAP_THRESHOLD) {
+  for (const building of buildings) {
+    building.neighborIds = [];
+  }
+
+  for (let index = 0; index < buildings.length; index += 1) {
+    for (let compareIndex = index + 1; compareIndex < buildings.length; compareIndex += 1) {
+      if (getBoundsGap(buildings[index].bounds, buildings[compareIndex].bounds) > maxGap) {
+        continue;
+      }
+
+      buildings[index].neighborIds.push(buildings[compareIndex].id);
+      buildings[compareIndex].neighborIds.push(buildings[index].id);
+    }
+  }
 }
 
 export function createEmptyRegionMap(width, height) {
@@ -177,6 +208,8 @@ export function detectBuildingsFromImageData(imageData) {
       });
     }
   }
+
+  addBuildingNeighbors(buildings);
 
   return { buildings, regionMap };
 }

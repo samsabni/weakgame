@@ -1,10 +1,12 @@
+import { canAssignToSelectedBuilding } from './buildingState.js';
+
 function getSelectedBuilding(state) {
   return state.buildings.find((building) => building.id === state.selectedBuildingId) ?? null;
 }
 
 export function assignDelinquentToSelectedBuilding(state) {
   const selectedBuilding = getSelectedBuilding(state);
-  if (!selectedBuilding || state.playerIdleDelinquents <= 0) {
+  if (!selectedBuilding || state.playerIdleDelinquents <= 0 || !canAssignToSelectedBuilding(state)) {
     return false;
   }
 

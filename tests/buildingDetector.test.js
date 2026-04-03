@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  addBuildingNeighbors,
   BUILDING_ROOF_COLOR,
   HOVER_COLOR,
   createEmptyRegionMap,
@@ -87,6 +88,29 @@ describe('buildingDetector', () => {
       [null, null, null],
       [null, null, null]
     ]);
+  });
+
+  it('connects buildings as neighbors when their bounds are within the adjacency gap threshold', () => {
+    const buildings = [
+      {
+        id: 'building-1',
+        bounds: { minX: 0, minY: 0, maxX: 2, maxY: 2 }
+      },
+      {
+        id: 'building-2',
+        bounds: { minX: 6, minY: 0, maxX: 8, maxY: 2 }
+      },
+      {
+        id: 'building-3',
+        bounds: { minX: 30, minY: 0, maxX: 32, maxY: 2 }
+      }
+    ];
+
+    addBuildingNeighbors(buildings, 4);
+
+    expect(buildings[0].neighborIds).toEqual(['building-2']);
+    expect(buildings[1].neighborIds).toEqual(['building-1']);
+    expect(buildings[2].neighborIds).toEqual([]);
   });
 
   it('builds a recolor mask that fills outward to the dark border', () => {

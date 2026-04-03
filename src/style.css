@@ -9,6 +9,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -91,9 +95,10 @@ body {
   gap: 12px;
   width: min(280px, calc(100vw - 32px));
   padding: 18px;
-  background: rgba(36, 31, 23, 0.88);
-  border: 1px solid rgba(60, 52, 39, 0.9);
-  backdrop-filter: blur(6px);
+  color: #241f17;
+  background: transparent;
+  border: 0;
+  backdrop-filter: none;
 }
 
 .status,
@@ -126,7 +131,7 @@ button:disabled {
   display: grid;
   gap: 10px;
   padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 1px solid rgba(36, 31, 23, 0.2);
 }
 
 .debug-row {
@@ -139,4 +144,28 @@ button:disabled {
 .debug-row button {
   width: 40px;
   padding: 8px 0;
+}
+
+.game-over-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  background: rgba(36, 31, 23, 0.58);
+}
+
+.game-over-card {
+  display: grid;
+  gap: 12px;
+  min-width: 220px;
+  padding: 24px;
+  text-align: center;
+  color: #f5efe2;
+  background: rgba(36, 31, 23, 0.92);
+}
+
+.game-over-card h2,
+.game-over-card button {
+  margin: 0;
 }

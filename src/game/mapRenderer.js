@@ -13,6 +13,8 @@ function createCanvas(width, height, className) {
   return canvas;
 }
 
+const STARTER_MARKER_RADIUS = 16;
+
 function mixChannel(start, end, ratio) {
   return Math.round(start + (end - start) * ratio);
 }
@@ -46,6 +48,15 @@ export function paintBuildingControlColor(context, building) {
   for (const [x, y] of building.recolorPixels) {
     context.fillRect(x, y, 1, 1);
   }
+}
+
+export function paintStarterMarker(context, building) {
+  context.save();
+  context.fillStyle = 'rgba(255, 255, 255, 1)';
+  context.beginPath();
+  context.arc(building.position.x, building.position.y, STARTER_MARKER_RADIUS, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
 }
 
 export function shouldRepaintBuilding(building) {
@@ -133,15 +144,18 @@ export function createMapRenderer({ image }) {
     hoverContext.restore();
   }
 
-  function drawSelection(building) {
+  function drawSelection(building, starterBuilding) {
     overlayContext.clearRect(0, 0, width, height);
-    if (!building) {
-      return;
+
+    if (building) {
+      overlayContext.fillStyle = 'rgba(255, 231, 153, 0.35)';
+      for (const [x, y] of building.pixels) {
+        overlayContext.fillRect(x, y, 1, 1);
+      }
     }
 
-    overlayContext.fillStyle = 'rgba(255, 231, 153, 0.35)';
-    for (const [x, y] of building.pixels) {
-      overlayContext.fillRect(x, y, 1, 1);
+    if (starterBuilding) {
+      paintStarterMarker(overlayContext, starterBuilding);
     }
   }
 

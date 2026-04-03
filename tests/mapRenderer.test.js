@@ -4,6 +4,7 @@ import {
   getBuildingDisplayColor,
   getControlColor,
   getControlBucket,
+  paintStarterMarker,
   paintBuildingControlColor,
   RUNNING_BUILDING_COLOR,
   updateChangedBuildingColors
@@ -15,6 +16,26 @@ function createMockContext() {
     fillStyle: '',
     clearRectCalls: [],
     fillRectCalls: [],
+    arcCalls: [],
+    fillCalls: [],
+    saveCalls: 0,
+    restoreCalls: 0,
+    beginPathCalls: 0,
+    save() {
+      this.saveCalls += 1;
+    },
+    restore() {
+      this.restoreCalls += 1;
+    },
+    beginPath() {
+      this.beginPathCalls += 1;
+    },
+    arc(x, y, radius, startAngle, endAngle) {
+      this.arcCalls.push({ x, y, radius, startAngle, endAngle });
+    },
+    fill() {
+      this.fillCalls.push(this.fillStyle);
+    },
     clearRect(x, y, width, height) {
       this.clearRectCalls.push({ x, y, width, height });
     },
@@ -68,6 +89,19 @@ describe('mapRenderer control colors', () => {
       { x: 1, y: 2, width: 1, height: 1, fillStyle: 'rgba(173, 137, 131, 1)' },
       { x: 3, y: 4, width: 1, height: 1, fillStyle: 'rgba(173, 137, 131, 1)' }
     ]);
+  });
+
+  it('paints a white starter marker at the building center', () => {
+    const context = createMockContext();
+
+    paintStarterMarker(context, {
+      position: { x: 12.5, y: 20.5 }
+    });
+
+    expect(context.arcCalls).toEqual([
+      { x: 12.5, y: 20.5, radius: 16, startAngle: 0, endAngle: Math.PI * 2 }
+    ]);
+    expect(context.fillCalls).toEqual(['rgba(255, 255, 255, 1)']);
   });
 
   it('maps 100 control to the exact final bucket', () => {

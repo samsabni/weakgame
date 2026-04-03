@@ -8,7 +8,9 @@ function createState({
   idle = 10,
   selectedBuildingId = 'building-1',
   assigned = 0,
-  isRunning = false
+  isRunning = false,
+  control = 20,
+  neighborIds = []
 } = {}) {
   return {
     playerIdleDelinquents: idle,
@@ -16,13 +18,17 @@ function createState({
     buildings: [
       {
         id: 'building-1',
+        control,
         playerAssignedDelinquents: assigned,
-        isRunning
+        isRunning,
+        neighborIds
       },
       {
         id: 'building-2',
+        control: 0,
         playerAssignedDelinquents: 3,
-        isRunning: false
+        isRunning: false,
+        neighborIds: []
       }
     ]
   };
@@ -58,6 +64,67 @@ describe('delinquentManager', () => {
     expect(changed).toBe(false);
     expect(state.playerIdleDelinquents).toBe(0);
     expect(state.buildings[0].playerAssignedDelinquents).toBe(1);
+  });
+
+  it('does not assign a delinquent to an unreachable selected building', () => {
+    const state = {
+      playerIdleDelinquents: 4,
+      selectedBuildingId: 'building-2',
+      buildings: [
+        {
+          id: 'building-1',
+          control: 20,
+          isRunning: false,
+          neighborIds: [],
+          playerAssignedDelinquents: 1
+        },
+        {
+          id: 'building-2',
+          control: 0,
+          isRunning: false,
+          neighborIds: [],
+          playerAssignedDelinquents: 0
+        }
+      ]
+    };
+
+    expect(assignDelinquentToSelectedBuilding(state)).toBe(false);
+    expect(state.playerIdleDelinquents).toBe(4);
+    expect(state.buildings[1].playerAssignedDelinquents).toBe(0);
+  });
+
+  it('does not assign a delinquent to a second-hop selected building', () => {
+    const state = {
+      playerIdleDelinquents: 4,
+      selectedBuildingId: 'building-3',
+      buildings: [
+        {
+          id: 'building-1',
+          control: 20,
+          isRunning: false,
+          neighborIds: ['building-2'],
+          playerAssignedDelinquents: 1
+        },
+        {
+          id: 'building-2',
+          control: 0,
+          isRunning: false,
+          neighborIds: ['building-1', 'building-3'],
+          playerAssignedDelinquents: 0
+        },
+        {
+          id: 'building-3',
+          control: 0,
+          isRunning: false,
+          neighborIds: ['building-2'],
+          playerAssignedDelinquents: 0
+        }
+      ]
+    };
+
+    expect(assignDelinquentToSelectedBuilding(state)).toBe(false);
+    expect(state.playerIdleDelinquents).toBe(4);
+    expect(state.buildings[2].playerAssignedDelinquents).toBe(0);
   });
 
   it('returns one delinquent from the selected building to idle', () => {

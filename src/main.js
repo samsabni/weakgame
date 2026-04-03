@@ -9,9 +9,14 @@ import {
   adjustCash,
   adjustInfluence,
   adjustPlayerIdleDelinquents,
+  checkStarterBuildingLoss,
+  claimStarterBuilding,
+  cloneBuildings,
   clearSelection,
   createInitialState,
+  getStarterBuilding,
   getSelectedBuilding,
+  resetGameState,
   selectBuilding,
   setHoveredBuilding,
   tickBuildingControl,
@@ -51,15 +56,21 @@ async function init() {
       return;
     }
 
-    const state = createInitialState(buildings);
+    const initialBuildings = cloneBuildings(buildings);
+    const state = createInitialState(cloneBuildings(initialBuildings));
     setStatus(ui, `${buildings.length} buildings detected.`);
-    renderer.initializeBuildingColors(buildings);
+    renderer.initializeBuildingColors(state.buildings);
     let previousHoveredBuilding = null;
     let resourceAccumulator = 0;
     let debugPanelOpen = false;
-    renderer.drawSelection(null);
     setDebugPanelOpen(ui, debugPanelOpen);
-    renderSelectedBuilding(ui, state, null);
+
+    function renderCurrentState() {
+      renderer.drawSelection(getSelectedBuilding(state), getStarterBuilding(state));
+      renderSelectedBuilding(ui, state, getSelectedBuilding(state));
+    }
+
+    renderCurrentState();
 
     let lastFrameTime = performance.now();
 
@@ -67,21 +78,31 @@ async function init() {
       const deltaSeconds = (now - lastFrameTime) / 1000;
       lastFrameTime = now;
 
-      const controlChanged = tickBuildingControl(state, CONTROL_RATE_PER_SECOND * deltaSeconds);
-      resourceAccumulator += deltaSeconds;
-      let resourcesChanged = false;
+      if (!state.gameOver) {
+        const controlChanged = tickBuildingControl(state, CONTROL_RATE_PER_SECOND * deltaSeconds);
+        resourceAccumulator += deltaSeconds;
+        let resourcesChanged = false;
 
-      while (resourceAccumulator >= 1) {
-        resourceAccumulator -= 1;
-        resourcesChanged = tickPassiveResources(state) || resourcesChanged;
-      }
+        while (resourceAccumulator >= 1) {
+          resourceAccumulator -= 1;
+          resourcesChanged = tickPassiveResources(state) || resourcesChanged;
+        }
 
-      if (controlChanged) {
-        renderer.updateBuildingColors(state.buildings);
-      }
+        const gameOverChanged = checkStarterBuildingLoss(state);
 
-      if (controlChanged || resourcesChanged) {
-        renderSelectedBuilding(ui, state, getSelectedBuilding(state));
+        if (gameOverChanged) {
+          setHoveredBuilding(state, null);
+          renderer.drawHover(null, previousHoveredBuilding);
+          previousHoveredBuilding = null;
+        }
+
+        if (controlChanged) {
+          renderer.updateBuildingColors(state.buildings);
+        }
+
+        if (controlChanged || resourcesChanged || gameOverChanged) {
+          renderCurrentState();
+        }
       }
 
       requestAnimationFrame(frame);
@@ -90,6 +111,10 @@ async function init() {
     requestAnimationFrame(frame);
 
     renderer.element.addEventListener('pointermove', (event) => {
+      if (state.gameOver) {
+        return;
+      }
+
       const point = renderer.toImageCoordinates(event.clientX, event.clientY);
       const buildingId = findBuildingAtPixel(regionMap, point.x, point.y);
       if (buildingId === state.hoveredBuildingId) {
@@ -103,6 +128,10 @@ async function init() {
     });
 
     renderer.element.addEventListener('pointerleave', () => {
+      if (state.gameOver) {
+        return;
+      }
+
       if (state.hoveredBuildingId === null) {
         return;
       }
@@ -113,8 +142,20 @@ async function init() {
     });
 
     renderer.element.addEventListener('click', (event) => {
+      if (state.gameOver) {
+        return;
+      }
+
       const point = renderer.toImageCoordinates(event.clientX, event.clientY);
       const buildingId = findBuildingAtPixel(regionMap, point.x, point.y);
+
+      if (state.needsStarterBuilding) {
+        if (buildingId && claimStarterBuilding(state, buildingId)) {
+          renderer.updateBuildingColors(state.buildings);
+          renderCurrentState();
+        }
+        return;
+      }
 
       if (buildingId) {
         selectBuilding(state, buildingId);
@@ -122,31 +163,51 @@ async function init() {
         clearSelection(state);
       }
 
-      renderer.drawSelection(getSelectedBuilding(state));
-      renderSelectedBuilding(ui, state, getSelectedBuilding(state));
+      renderCurrentState();
     });
 
     ui.assignDelinquentButton.addEventListener('click', () => {
+      if (state.gameOver) {
+        return;
+      }
+
       if (assignDelinquentToSelectedBuilding(state)) {
         adjustCash(state, 0);
         renderer.updateBuildingColors(state.buildings);
-        renderSelectedBuilding(ui, state, getSelectedBuilding(state));
+        renderCurrentState();
       }
     });
 
     ui.removeDelinquentButton.addEventListener('click', () => {
+      if (state.gameOver) {
+        return;
+      }
+
       if (removeDelinquentFromSelectedBuilding(state)) {
         adjustCash(state, 0);
         renderer.updateBuildingColors(state.buildings);
-        renderSelectedBuilding(ui, state, getSelectedBuilding(state));
+        renderCurrentState();
       }
     });
 
     ui.runBuildingButton.addEventListener('click', () => {
+      if (state.gameOver) {
+        return;
+      }
+
       if (purchaseSelectedRunningBuilding(state)) {
         renderer.updateBuildingColors(state.buildings);
-        renderSelectedBuilding(ui, state, getSelectedBuilding(state));
+        renderCurrentState();
       }
+    });
+
+    ui.startOverButton.addEventListener('click', () => {
+      renderer.drawHover(null, previousHoveredBuilding);
+      previousHoveredBuilding = null;
+      resetGameState(state, initialBuildings);
+      resourceAccumulator = 0;
+      renderer.initializeBuildingColors(state.buildings);
+      renderCurrentState();
     });
 
     ui.debugToggle.addEventListener('click', () => {
@@ -155,8 +216,12 @@ async function init() {
     });
 
     function applyDebugChange(changeFn, amount) {
+      if (state.gameOver) {
+        return;
+      }
+
       changeFn(state, amount);
-      renderSelectedBuilding(ui, state, getSelectedBuilding(state));
+      renderCurrentState();
     }
 
     ui.debugCashIncreaseButton.addEventListener('click', () => applyDebugChange(adjustCash, 100));

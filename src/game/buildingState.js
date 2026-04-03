@@ -4,6 +4,9 @@ export function createInitialState(buildings) {
     playerIdleDelinquents: 10,
     cash: 0,
     influence: 0,
+    needsStarterBuilding: true,
+    playerStarterBuildingId: null,
+    gameOver: false,
     selectedBuildingId: null,
     hoveredBuildingId: null
   };
@@ -25,6 +28,68 @@ export function getSelectedBuilding(state) {
   return state.buildings.find((building) => building.id === state.selectedBuildingId) ?? null;
 }
 
+export function getStarterBuilding(state) {
+  return getBuildingById(state, state.playerStarterBuildingId) ?? null;
+}
+
+export function claimStarterBuilding(state, buildingId) {
+  if (!state.needsStarterBuilding) {
+    return false;
+  }
+
+  const building = getBuildingById(state, buildingId);
+  if (!building) {
+    return false;
+  }
+
+  building.isRunning = true;
+  building.playerAssignedDelinquents = 10;
+  building.control = 100;
+  state.playerStarterBuildingId = buildingId;
+  state.selectedBuildingId = buildingId;
+  state.needsStarterBuilding = false;
+  return true;
+}
+
+function getBuildingById(state, buildingId) {
+  return state.buildings.find((building) => building.id === buildingId) ?? null;
+}
+
+export function checkStarterBuildingLoss(state) {
+  if (state.gameOver) {
+    return false;
+  }
+
+  const starterBuilding = getStarterBuilding(state);
+  if (!starterBuilding || starterBuilding.control >= 100) {
+    return false;
+  }
+
+  state.gameOver = true;
+  return true;
+}
+
+export function cloneBuildings(buildings) {
+  return buildings.map((building) => ({
+    ...building,
+    position: building.position ? { ...building.position } : building.position,
+    bounds: building.bounds ? { ...building.bounds } : building.bounds,
+    pixels: (building.pixels ?? []).map(([x, y]) => [x, y]),
+    recolorPixels: (building.recolorPixels ?? building.pixels ?? []).map(([x, y]) => [x, y]),
+    neighborIds: [...(building.neighborIds ?? [])]
+  }));
+}
+
+export function resetGameState(state, initialBuildings) {
+  const nextState = createInitialState(cloneBuildings(initialBuildings));
+
+  for (const key of Object.keys(state)) {
+    delete state[key];
+  }
+
+  Object.assign(state, nextState);
+}
+
 export function getBuildingControlCap(building) {
   return Math.min(100, building.playerAssignedDelinquents * 10);
 }
@@ -32,6 +97,47 @@ export function getBuildingControlCap(building) {
 export function getCashCap(buildings) {
   const runningCount = buildings.filter((building) => building.isRunning).length;
   return 2000 + (runningCount * 2000);
+}
+
+export function getPassiveCashRate(state) {
+  return state.buildings.reduce((sum, building) => {
+    if (building.isRunning || building.control <= 0) {
+      return sum;
+    }
+
+    return sum + (5 * (building.control / 100));
+  }, 0);
+}
+
+export function getPassiveInfluenceRate(state) {
+  return state.buildings.filter((building) => building.isRunning).length;
+}
+
+export function getReachableBuildingIds(state) {
+  const reachableIds = new Set();
+
+  for (const building of state.buildings) {
+    if (!(building.control > 0 || building.isRunning)) {
+      continue;
+    }
+
+    reachableIds.add(building.id);
+
+    for (const neighborId of building.neighborIds ?? []) {
+      reachableIds.add(neighborId);
+    }
+  }
+
+  return reachableIds;
+}
+
+export function canAssignToSelectedBuilding(state) {
+  const selectedBuilding = getSelectedBuilding(state);
+  if (!selectedBuilding) {
+    return false;
+  }
+
+  return getReachableBuildingIds(state).has(selectedBuilding.id);
 }
 
 function clampCashToCap(state) {
@@ -89,16 +195,8 @@ export function tickBuildingControl(state, amountPerAssignedDelinquent) {
 }
 
 export function tickPassiveResources(state) {
-  const cashGain = Math.round(
-    state.buildings.reduce((sum, building) => {
-      if (building.isRunning || building.control <= 0) {
-        return sum;
-      }
-
-      return sum + (5 * (building.control / 100));
-    }, 0)
-  );
-  const influenceGain = state.buildings.filter((building) => building.isRunning).length;
+  const cashGain = Math.round(getPassiveCashRate(state));
+  const influenceGain = getPassiveInfluenceRate(state);
   let changed = false;
 
   if (cashGain > 0) {
